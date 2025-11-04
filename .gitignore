@@ -1,0 +1,25 @@
+# Arquivos de build
+/build/
+sdkconfig.old
+sdkconfig.defaults.old
+
+# Caches
+__pycache__/
+*.pyc
+*.pyo
+*.swp
+
+# Arquivos gerados pelo IDF
+dependencies.lock
+CMakeFiles/
+cmake-build*
+*.log
+*.elf
+*.bin
+*.map
+*.o
+
+# Configs locais
+.local/
+.vscode/
+
