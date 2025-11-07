@@ -61,6 +61,7 @@ void motor_backward(uint8_t speed)
     ESP_LOGI(TAG, "Motor ré (speed=%d)", speed);
 }
 
+
 void motor_stop(void)
 {
     gpio_set_level(IN3_GPIO, 0);
@@ -71,11 +72,32 @@ void motor_stop(void)
 }
 
 void motor_forwardVM(Motor *m, uint16_t speed) {
+    // Gira no sentido horário
     gpio_set_level(m->in1, 1);
     gpio_set_level(m->in2, 0);
     ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, speed);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
+    ESP_LOGI(TAG, "Motor frente (speed=%d)", speed);
 }
+
+void motor_backwardVM(Motor *m, uint16_t speed) {
+    // Gira no sentido anti-horário
+    gpio_set_level(m->in1, 0);
+    gpio_set_level(m->in2, 1);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, speed);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
+    ESP_LOGI(TAG, "Motor ré (speed=%d)", speed);
+}
+
+void motor_stopVM(Motor *m) {
+    // Para o motor
+    gpio_set_level(m->in1, 0);
+    gpio_set_level(m->in2, 0);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, 0);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
+    ESP_LOGI(TAG, "Motor parado");
+}
+
 
 /* ============================
    WI-FI AP
@@ -195,6 +217,17 @@ void tcp_server_task(void *pvParameters)
 		
 		    int speed = 0;
 		    char direction[32] = {0};
+
+			int motor = 0;
+			
+			// extrai o campo motor
+			char *motor_ptr = strstr(rx_buffer, "\"motor\":");
+			if (motor_ptr)
+			{
+			    motor_ptr += 8; // pula "motor":
+			    motor = atoi(motor_ptr); // converte o número
+			}
+
 		
 		    // extrai o campo speed da msg
 		    char *speed_ptr = strstr(rx_buffer, "\"speed\":");
@@ -221,29 +254,47 @@ void tcp_server_task(void *pvParameters)
 		        }
 		    }
 		
-		    ESP_LOGI(TAG, " Direção: %s | Velocidade: %d", direction, speed);
-		
-			// TODO: Analisar para selecionar o motor vindo da request e passar certo para motor_forwardVM()
-		    if (strcmp(direction, "forward") == 0)
-		    {
-		        motor_forward(speed);
-    			motor_forwardVM(&motorA, speed);
-		        send(client_sock, " Frente\n", 10, 0);
-		    }
-		    else if (strcmp(direction, "backward") == 0)
-		    {
-		        motor_backward(speed);
-		        send(client_sock, "Ré\n", 8, 0);
-		    }
-		    else if (strcmp(direction, "stop") == 0)
-		    {
-		        motor_stop();
-		        send(client_sock, "Parado\n", 11, 0);
-		    }
-		    else
-		    {
-		        send(client_sock, "Comando inválido\n", 22, 0);
-		    }
+		    ESP_LOGI(TAG, "Motor: %d | Direção: %s | Velocidade: %d", motor, direction, speed);
+			
+			if (strcmp(direction, "forward") == 0)
+			{
+			    if (motor == 1)
+			        motor_forwardVM(&motorA, speed);
+			    else if (motor == 2)
+			        motor_forwardVM(&motorB, speed);
+			
+			    send(client_sock, "Frente\n", 10, 0);
+			}
+			else if (strcmp(direction, "backward") == 0)
+			{
+			    if (motor == 1)
+			        motor_backwardVM(&motorA, speed);
+			    else if (motor == 2)
+			        motor_backwardVM(&motorB, speed);
+			
+			    send(client_sock, "Ré\n", 8, 0);
+			}
+			else if (strcmp(direction, "stop") == 0)
+			{
+			    if (motor == 1)
+			        motor_stopVM(&motorA);
+			    else if (motor == 2)
+			        motor_stopVM(&motorB);
+			
+			    send(client_sock, "Parado\n", 11, 0);
+			}else if (strcmp(direction, "stop_all") == 0)
+			{
+			    motor_stopVM(&motorA);
+			    motor_stopVM(&motorB);
+			    send(client_sock, "Todos os motores parados\n", 26, 0);
+			    ESP_LOGI(TAG, "Todos os motores parados");
+			}
+
+			else
+			{
+			    send(client_sock, "Comando inválido\n", 22, 0);
+			}
+
 		}
 
     }
@@ -277,19 +328,7 @@ void motor_init(Motor *m, const char *nome) {
 
 
 
-void motor_backwardVM(Motor *m, uint16_t speed) {
-    gpio_set_level(m->in1, 0);
-    gpio_set_level(m->in2, 1);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, speed);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
-}
 
-void motor_stopVM(Motor *m) {
-    gpio_set_level(m->in1, 0);
-    gpio_set_level(m->in2, 0);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, 0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
-}
 
 
 /* ============================
