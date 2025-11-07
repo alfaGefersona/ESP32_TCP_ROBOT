@@ -13,7 +13,7 @@
 
 #define WIFI_SSID       "Robot"
 #define WIFI_PASS       "12345678"
-#define MAX_CONNECTIONS 4
+#define MAX_CONNECTIONS 1
 #define TCP_PORT        8080
 
 #define IN1_GPIO GPIO_NUM_33
@@ -42,60 +42,54 @@ static const char *TAG = "ESP32_TCP_MOTOR";
    CONFIGURAÇÃO DO MOTOR
    ============================ */
 
+void motor_init(Motor *m, const char *nome) {
+    ESP_LOGI("MOTOR_INIT", "inicializando %s...", nome);
 
-void motor_forward(uint8_t speed)
-{
-    gpio_set_level(IN3_GPIO, 1);
-    gpio_set_level(IN4_GPIO, 0);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, speed);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-    ESP_LOGI(TAG, "Motor frente (speed=%d)", speed);
+    gpio_reset_pin(m->in1);
+    gpio_reset_pin(m->in2);
+    gpio_set_direction(m->in1, GPIO_MODE_OUTPUT);
+    gpio_set_direction(m->in2, GPIO_MODE_OUTPUT);
+
+    ledc_channel_config_t channel = {
+        .gpio_num = m->en,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = m->pwm_channel,
+        .timer_sel = LEDC_TIMER_0,
+        .duty = 0,
+        .hpoint = 0
+    };
+    ledc_channel_config(&channel);
+
+    ESP_LOGI("MOTOR_INIT", "canal PWM configurado: EN=%d | Canal=%d", m->en, m->pwm_channel);
+    ESP_LOGI("MOTOR_INIT", "%s inicializado com sucesso!\n", nome);
 }
 
-void motor_backward(uint8_t speed)
-{
-    gpio_set_level(IN3_GPIO, 0);
-    gpio_set_level(IN4_GPIO, 1);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, speed);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-    ESP_LOGI(TAG, "Motor ré (speed=%d)", speed);
-}
 
-
-void motor_stop(void)
-{
-    gpio_set_level(IN3_GPIO, 0);
-    gpio_set_level(IN4_GPIO, 0);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-    ESP_LOGI(TAG, "Motor parado");
-}
-
+    //sentido horário
 void motor_forwardVM(Motor *m, uint16_t speed) {
-    // Gira no sentido horário
     gpio_set_level(m->in1, 1);
     gpio_set_level(m->in2, 0);
     ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, speed);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
-    ESP_LOGI(TAG, "Motor frente (speed=%d)", speed);
+    ESP_LOGI(TAG, "motor frente (speed=%d)", speed);
 }
 
+	//sentido anti-horário
 void motor_backwardVM(Motor *m, uint16_t speed) {
-    // Gira no sentido anti-horário
     gpio_set_level(m->in1, 0);
     gpio_set_level(m->in2, 1);
     ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, speed);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
-    ESP_LOGI(TAG, "Motor ré (speed=%d)", speed);
+    ESP_LOGI(TAG, "motor re (speed=%d)", speed);
 }
 
+    // para o motor
 void motor_stopVM(Motor *m) {
-    // Para o motor
     gpio_set_level(m->in1, 0);
     gpio_set_level(m->in2, 0);
     ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, 0);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
-    ESP_LOGI(TAG, "Motor parado");
+    ESP_LOGI(TAG, "motor parado");
 }
 
 
@@ -148,7 +142,7 @@ void wifi_init_softap(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "AP iniciado (IP padrão 192.168.4.1)");
+    ESP_LOGI(TAG, "AP iniciado (IP => 192.168.4.1)");
 }
 
 /* ============================
@@ -207,7 +201,7 @@ void tcp_server_task(void *pvParameters)
 		    int len = recv(client_sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
 		    if (len <= 0)
 		    {
-		        ESP_LOGI(TAG, "Cliente desconectado");
+		        ESP_LOGI(TAG, "cliente desconectado");
 		        close(client_sock);
 		        break;
 		    }
@@ -234,7 +228,7 @@ void tcp_server_task(void *pvParameters)
 		    if (speed_ptr)
 		    {
 		        speed_ptr += 8; // pula o texto "speed":
-		        speed = atoi(speed_ptr); // converte o número
+		        speed = atoi(speed_ptr);
 		    }
 		
 		    // extrai o campo direction da msg
@@ -254,7 +248,7 @@ void tcp_server_task(void *pvParameters)
 		        }
 		    }
 		
-		    ESP_LOGI(TAG, "Motor: %d | Direção: %s | Velocidade: %d", motor, direction, speed);
+		    ESP_LOGI(TAG, "motor: %d | direcao: %s | velocidade: %d", motor, direction, speed);
 			
 			if (strcmp(direction, "forward") == 0)
 			{
@@ -263,7 +257,7 @@ void tcp_server_task(void *pvParameters)
 			    else if (motor == 2)
 			        motor_forwardVM(&motorB, speed);
 			
-			    send(client_sock, "Frente\n", 10, 0);
+			    send(client_sock, "frente\n", 10, 0);
 			}
 			else if (strcmp(direction, "backward") == 0)
 			{
@@ -272,7 +266,7 @@ void tcp_server_task(void *pvParameters)
 			    else if (motor == 2)
 			        motor_backwardVM(&motorB, speed);
 			
-			    send(client_sock, "Ré\n", 8, 0);
+			    send(client_sock, "re\n", 8, 0);
 			}
 			else if (strcmp(direction, "stop") == 0)
 			{
@@ -281,18 +275,18 @@ void tcp_server_task(void *pvParameters)
 			    else if (motor == 2)
 			        motor_stopVM(&motorB);
 			
-			    send(client_sock, "Parado\n", 11, 0);
+			    send(client_sock, "parado\n", 11, 0);
 			}else if (strcmp(direction, "stop_all") == 0)
 			{
 			    motor_stopVM(&motorA);
 			    motor_stopVM(&motorB);
-			    send(client_sock, "Todos os motores parados\n", 26, 0);
-			    ESP_LOGI(TAG, "Todos os motores parados");
+			    send(client_sock, "todos motores parados\n", 26, 0);
+			    ESP_LOGI(TAG, "todos os motores parados");
 			}
 
 			else
 			{
-			    send(client_sock, "Comando inválido\n", 22, 0);
+			    send(client_sock, "comando inválido\n", 22, 0);
 			}
 
 		}
@@ -304,32 +298,6 @@ void tcp_server_task(void *pvParameters)
 }
 
 
-void motor_init(Motor *m, const char *nome) {
-    ESP_LOGI("MOTOR_INIT", "Inicializando %s...", nome);
-
-    gpio_reset_pin(m->in1);
-    gpio_reset_pin(m->in2);
-    gpio_set_direction(m->in1, GPIO_MODE_OUTPUT);
-    gpio_set_direction(m->in2, GPIO_MODE_OUTPUT);
-
-    ledc_channel_config_t channel = {
-        .gpio_num = m->en,
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel = m->pwm_channel,
-        .timer_sel = LEDC_TIMER_0,  // Corrigido
-        .duty = 0,
-        .hpoint = 0
-    };
-    ledc_channel_config(&channel);
-
-    ESP_LOGI("MOTOR_INIT", "Canal PWM configurado: EN=%d | Canal=%d", m->en, m->pwm_channel);
-    ESP_LOGI("MOTOR_INIT", "%s inicializado com sucesso!\n", nome);
-}
-
-
-
-
-
 
 /* ============================
    MAIN
@@ -339,7 +307,7 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     wifi_init_softap();
 
-    // 1. Configure o timer PWM (apenas uma vez)
+    // configura o timer pwm
     ledc_timer_config_t timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_8_BIT,
@@ -349,11 +317,11 @@ void app_main(void)
     };
     ledc_timer_config(&timer);
 
-    // 2. Inicialize motores via struct
+    // inicializa os componentes (motor)
     motor_init(&motorA, "Motor A (OUT1/OUT2)");
     motor_init(&motorB, "Motor B (OUT3/OUT4)");
 
-    // 3. Inicie o servidor TCP
+    // inicia o server TCP
     xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
 }
 
