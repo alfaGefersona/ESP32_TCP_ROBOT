@@ -25,6 +25,10 @@
 #define IN4_GPIO GPIO_NUM_27
 #define ENB_GPIO GPIO_NUM_25 // PWM
 
+#define IN1_GPIO2  GPIO_NUM_16
+#define IN2_GPIO2  GPIO_NUM_17
+#define ENA_GPIO2  GPIO_NUM_18
+
 typedef struct {
     gpio_num_t in1;
     gpio_num_t in2;
@@ -32,9 +36,10 @@ typedef struct {
     ledc_channel_t pwm_channel;
 } Motor;
 
-Motor motorA = { .in1 = IN1_GPIO, .in2 = IN2_GPIO, .en = ENA_GPIO, .pwm_channel = LEDC_CHANNEL_1 };
-Motor motorB = { .in1 = IN3_GPIO, .in2 = IN4_GPIO, .en = ENB_GPIO, .pwm_channel = LEDC_CHANNEL_0 };
-
+Motor motorA = { .in1 = IN1_GPIO, .in2 = IN2_GPIO, .en = ENA_GPIO, .pwm_channel = LEDC_CHANNEL_0 };
+Motor motorB = { .in1 = IN3_GPIO, .in2 = IN4_GPIO, .en = ENB_GPIO, .pwm_channel = LEDC_CHANNEL_1 };
+Motor motorC = { .in1 = IN1_GPIO2, .in2 = IN2_GPIO2, .en = ENA_GPIO2, .pwm_channel = LEDC_CHANNEL_2 };
+Motor motorD ={}; 
 
 static const char *TAG = "ESP32_TCP_MOTOR";
 
@@ -219,7 +224,7 @@ void tcp_server_task(void *pvParameters)
 			if (motor_ptr)
 			{
 			    motor_ptr += 8; // pula "motor":
-			    motor = atoi(motor_ptr); // converte o número
+			    motor = atoi(motor_ptr);
 			}
 
 		
@@ -256,6 +261,8 @@ void tcp_server_task(void *pvParameters)
 			        motor_forwardVM(&motorA, speed);
 			    else if (motor == 2)
 			        motor_forwardVM(&motorB, speed);
+ 				else if (motor == 3)
+			        motor_forwardVM(&motorC, speed);
 			
 			    send(client_sock, "frente\n", 10, 0);
 			}
@@ -265,6 +272,8 @@ void tcp_server_task(void *pvParameters)
 			        motor_backwardVM(&motorA, speed);
 			    else if (motor == 2)
 			        motor_backwardVM(&motorB, speed);
+			    else if (motor == 3)
+			        motor_backwardVM(&motorC, speed);
 			
 			    send(client_sock, "re\n", 8, 0);
 			}
@@ -274,12 +283,14 @@ void tcp_server_task(void *pvParameters)
 			        motor_stopVM(&motorA);
 			    else if (motor == 2)
 			        motor_stopVM(&motorB);
-			
+				else if (motor == 3)
+			        motor_stopVM(&motorC);
 			    send(client_sock, "parado\n", 11, 0);
 			}else if (strcmp(direction, "stop_all") == 0)
 			{
 			    motor_stopVM(&motorA);
 			    motor_stopVM(&motorB);
+				motor_stopVM(&motorC);
 			    send(client_sock, "todos motores parados\n", 26, 0);
 			    ESP_LOGI(TAG, "todos os motores parados");
 			}
@@ -320,6 +331,8 @@ void app_main(void)
     // inicializa os componentes (motor)
     motor_init(&motorA, "Motor A (OUT1/OUT2)");
     motor_init(&motorB, "Motor B (OUT3/OUT4)");
+    motor_init(&motorC, "Motor C (OUT1/OUT2)");
+
 
     // inicia o server TCP
     xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
