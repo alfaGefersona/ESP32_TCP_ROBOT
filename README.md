@@ -1,19 +1,20 @@
-# ESP32 — Controle de Motores DC via Wi-Fi (Access Point + Servidor TCP)
+# 🧠 ESP32 — Controle de Múltiplos Motores DC via Wi-Fi (Access Point + Servidor TCP)
 
-Este projeto demonstra o controle de **dois motores DC** utilizando o **ESP32** configurado como **Access Point Wi-Fi** e **Servidor TCP**.  
-A comunicação é feita por meio de **mensagens JSON**, que determinam a direção e velocidade de cada motor em tempo real.
-
----
-
-## Objetivo
-
-- Criar um **Access Point Wi-Fi** com o ESP32;
-- Implementar um **servidor TCP** para receber comandos de um cliente remoto;
-- Controlar **motores DC via PWM (modulação por largura de pulso)**;
+Este projeto demonstra o controle de **três motores DC independentes** utilizando o **ESP32** configurado como **Access Point Wi-Fi** e **Servidor TCP**.  
+A comunicação é feita por meio de **mensagens JSON**, que determinam a direção e a velocidade de cada motor em tempo real.
 
 ---
 
-##  Estrutura de Pastas
+## 🎯 Objetivos
+
+- Criar um **Access Point Wi-Fi** com o ESP32;  
+- Implementar um **servidor TCP** para receber comandos JSON;  
+- Controlar **múltiplos motores DC via PWM (LEDC)**, com isolamento de canais;  
+- Permitir controle individual ou simultâneo de motores A, B e C.
+
+---
+
+## 📂 Estrutura de Pastas
 
 ```
 esp32-tcp-motor/
@@ -30,50 +31,57 @@ esp32-tcp-motor/
 
 ---
 
-##  Hardware Utilizado
+## 🔌 Hardware Utilizado
 
 | Componente | Função | Observação |
 |-------------|---------|------------|
 | ESP32 DevKit | Microcontrolador principal | Responsável pelo Wi-Fi e PWM |
-| Ponte H (L298N ou L293D) | Interface de potência | Controla os motores DC |
-| Motores DC | Atuadores | Dois motores independentes |
+| Ponte H (L298N / L293D) | Interface de potência | Controla os motores DC |
+| Motores DC | Atuadores | Três motores independentes |
 | Fonte 5–12V | Alimentação | Energia dos motores e ESP32 |
 | Jumpers | Conexões elétricas | Ligações entre ESP32 e ponte H |
 
 ---
 
-## Mapeamento de Pinos
+## ⚙️ Mapeamento de Pinos
 
 ### Motor A — (OUT1 / OUT2)
 | Função | GPIO | Descrição |
 |--------|-------|------------|
-| IN1 | GPIO 33 | Controle de direção A |
-| IN2 | GPIO 32 | Controle de direção B |
-| ENA | GPIO 14 | PWM (Canal LEDC 1) |
+| IN1 | GPIO 33 | Direção A |
+| IN2 | GPIO 32 | Direção B |
+| ENA | GPIO 14 | PWM — Canal LEDC 1 |
 
 ### Motor B — (OUT3 / OUT4)
 | Função | GPIO | Descrição |
 |--------|-------|------------|
-| IN3 | GPIO 26 | Controle de direção A |
-| IN4 | GPIO 27 | Controle de direção B |
-| ENB | GPIO 25 | PWM (Canal LEDC 0) |
+| IN3 | GPIO 26 | Direção A |
+| IN4 | GPIO 27 | Direção B |
+| ENB | GPIO 25 | PWM — Canal LEDC 0 |
+
+### Motor C — (OUT5 / OUT6)
+| Função | GPIO | Descrição |
+|--------|-------|------------|
+| IN1 | GPIO 16 | Direção A |
+| IN2 | GPIO 17 | Direção B |
+| ENA | GPIO 18 | PWM — Canal LEDC 2 |
 
 ---
 
-## Parâmetros Técnicos
+## ⚙️ Parâmetros Técnicos
 
 | Parâmetro | Valor |
 |------------|--------|
 | Frequência PWM | 5 kHz |
 | Resolução PWM | 8 bits (0–255) |
-| Timer | LEDC_TIMER_0 |
 | Modo | LEDC_LOW_SPEED_MODE |
-| Canal Motor A | LEDC_CHANNEL_1 |
-| Canal Motor B | LEDC_CHANNEL_0 |
+| Timer | LEDC_TIMER_0 |
+| Canais | A: 1 / B: 0 / C: 2 |
+| Comunicação | TCP (JSON via Wi-Fi) |
 
 ---
 
-## Configuração Wi-Fi
+## 📡 Configuração Wi-Fi
 
 O ESP32 atua como **Access Point**, criando sua própria rede sem fio.  
 Os parâmetros estão definidos no código principal (`main.c`).
@@ -86,129 +94,136 @@ Os parâmetros estão definidos no código principal (`main.c`).
 | Modo | Access Point |
 | IP padrão | `192.168.4.1` |
 | Porta TCP | `8080` |
-| Máx. conexões | 4 |
+| Máx. conexões | 1 |
 
-Após iniciar o ESP32, conecte-se diretamente à rede **Robot** para enviar comandos TCP.
+Após iniciar o ESP32, conecte-se à rede **Robot** e envie comandos TCP diretamente.
 
 ---
 
-##  Arquitetura do Sistema
+## 🧩 Arquitetura do Sistema
 
 ### Inicialização (`app_main`)
-- Inicializa a memória NVS;
-- Configura o modo **Access Point Wi-Fi** (`wifi_init_softap`);
-- Define e inicia o **timer PWM** (`ledc_timer_config`);
-- Inicializa os motores A e B (`motor_init`);
-- Cria a tarefa `tcp_server_task` para gerenciar a comunicação TCP.
+- Inicializa a NVS (memória não volátil);
+- Configura o **Access Point Wi-Fi** (`wifi_init_softap`);
+- Define o **timer PWM global** (`ledc_timer_config`);
+- Inicializa os motores A, B e C (`motor_init`);
+- Cria a tarefa **`tcp_server_task`** para gerenciar conexões.
 
 ### Servidor TCP (`tcp_server_task`)
 - Cria e escuta conexões TCP na porta `8080`;
-- Recebe mensagens JSON;
-- Extrai os parâmetros `"direction"` e `"speed"`;
-- Controla o motor conforme o comando recebido;
+- Recebe mensagens JSON com os campos `"motor"`, `"direction"` e `"speed"`;
+- Decodifica e aplica o comando ao motor correspondente;
 - Retorna resposta textual ao cliente.
 
 ### Controle dos Motores
 As funções utilizam GPIOs e PWM via driver **LEDC**:
+
 | Função | Descrição |
 |--------|------------|
-| `motor_forward(speed)` | Gira o motor B para frente |
-| `motor_backward(speed)` | Gira o motor B para trás |
-| `motor_stop()` | Para o motor B |
-| `motor_forwardVM(&motorA, speed)` | Controla o motor A via struct |
-| `motor_backwardVM(&motorA, speed)` | Movimento reverso do motor A |
-| `motor_stopVM(&motorA)` | Parada suave (PWM=0) |
+| `motor_forwardVM(&motorX, speed)` | Gira o motor para frente |
+| `motor_backwardVM(&motorX, speed)` | Gira o motor para trás |
+| `motor_stopVM(&motorX)` | Para o motor (PWM=0) |
 
 ---
 
-## Formato da Comunicação
+## 💬 Formato da Comunicação
 
-O cliente envia mensagens JSON para o ESP32 via TCP.
+O cliente envia mensagens JSON via TCP.
 
-### Exemplo 1 — Frente
+### Exemplo 1 — Motor A para frente
 ```json
-{"direction":"forward","speed":200}
+{"motor":1,"direction":"forward","speed":200}
 ```
 
-### Exemplo 2 — Ré
+### Exemplo 2 — Motor B ré
 ```json
-{"direction":"backward","speed":150}
+{"motor":2,"direction":"backward","speed":150}
 ```
 
-### Exemplo 3 — Parar
+### Exemplo 3 — Motor C parar
 ```json
-{"direction":"stop","speed":0}
+{"motor":3,"direction":"stop","speed":0}
+```
+
+### Exemplo 4 — Parar todos
+```json
+{"direction":"stop_all"}
 ```
 
 ### Respostas do Servidor
 ```
-Frente
-Ré
-Parado
-Comando inválido
+frente
+re
+parado
+todos motores parados
+comando inválido
 ```
 
 ---
 
-##  Teste de Comunicação
+## 🧪 Teste de Comunicação
 
-1. **Conecte-se à rede Wi-Fi** criada pelo ESP32:
+1. **Conecte-se à rede Wi-Fi:**
    ```
    SSID: Robot
    Senha: 12345678
    ```
 
-2. **Use um terminal TCP** (como `netcat`, PuTTY ou SocketTest):
+2. **Abra um cliente TCP**, como `netcat`:
    ```bash
    nc 192.168.4.1 8080
    ```
 
-3. **Envie um comando JSON**:
+3. **Envie o comando:**
    ```json
-   {"direction":"forward","speed":180}
+   {"motor":1,"direction":"forward","speed":180}
    ```
 
-4. **Receba a resposta textual**:
+4. **Receba a resposta:**
    ```
-   Frente
+   frente
    ```
 
-5. **Observe os logs no monitor serial**:
+5. **Veja os logs no monitor serial:**
    ```
-   I (1456) ESP32_TCP_MOTOR: Direção: forward | Velocidade: 180
-   I (1458) ESP32_TCP_MOTOR: Motor frente (speed=180)
+   I (1456) ESP32_TCP_MOTOR: motor: 1 | direcao: forward | velocidade: 180
+   I (1458) ESP32_TCP_MOTOR: motor frente (speed=180)
    ```
 
 ---
 
-## Diagrama de Ligação
+## 🔌 Diagrama de Ligação
 
 ```
-ESP32        PONTE H (L298N)
-------       ----------------
-GPIO 33 ---> IN1
-GPIO 32 ---> IN2
-GPIO 14 ---> ENA (PWM Motor A)
+ESP32         PONTE H (L298N)
+------        ----------------
+GPIO 33  ---> IN1
+GPIO 32  ---> IN2
+GPIO 14  ---> ENA (PWM Motor A)
 
-GPIO 26 ---> IN3
-GPIO 27 ---> IN4
-GPIO 25 ---> ENB (PWM Motor B)
+GPIO 26  ---> IN3
+GPIO 27  ---> IN4
+GPIO 25  ---> ENB (PWM Motor B)
 
-5V     ---> +5V
-GND    ---> GND
+GPIO 16  ---> IN5
+GPIO 17  ---> IN6
+GPIO 18  ---> ENA (PWM Motor C)
+
+5V       ---> +5V
+GND      ---> GND
 ```
 
 ---
 
-## Solução de Problemas
+## 🧰 Solução de Problemas
 
 | Problema | Causa provável | Solução |
 |-----------|----------------|----------|
-| Wi-Fi não aparece | Falha na inicialização do AP | Reinicie o ESP32 e verifique logs |
-| Motor não gira | PWM não configurado corretamente | Verifique GPIOs e `motor_init()` |
-| Direção invertida | Pinos IN1/IN2 trocados | Inverta as ligações na ponte H |
-| Cliente desconecta | JSON inválido | Envie comandos bem formatados |
-| Motor não para | Duty PWM != 0 | Verifique `motor_stop()` |
+| Motor A parou após adicionar Motor C | Conflito de canais/timers do LEDC | Use canais distintos ou timers separados |
+| Wi-Fi não aparece | Falha no modo AP | Reinicie o ESP32 |
+| Direção invertida | Pinos IN1/IN2 trocados | Inverta as conexões |
+| Cliente desconecta | JSON malformado | Corrija o formato da mensagem |
+| Duty não atua | PWM não atualizado | Confirme `ledc_update_duty()` após `set_duty()` |
 
 ---
 
@@ -219,20 +234,17 @@ GND    ---> GND
    idf.py set-target esp32
    ```
 
-2. Compile o projeto:
+2. Compile:
    ```bash
    idf.py build
    ```
 
-3. Faça o upload:
+3. Faça upload:
    ```bash
    idf.py flash
    ```
 
-4. Inicie o monitor serial:
+4. Monitore:
    ```bash
    idf.py monitor
    ```
-
----
-
