@@ -29,6 +29,12 @@
 #define IN2_GPIO2  GPIO_NUM_17
 #define ENA_GPIO2  GPIO_NUM_18
 
+// MOTOR D (STEPPER COM L298N)
+#define STEP_IN1 GPIO_NUM_4
+#define STEP_IN2 GPIO_NUM_5
+#define STEP_IN3 GPIO_NUM_19
+#define STEP_IN4 GPIO_NUM_21
+
 typedef struct {
     gpio_num_t in1;
     gpio_num_t in2;
@@ -95,6 +101,59 @@ void motor_stopVM(Motor *m) {
     ledc_set_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel, 0);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
     ESP_LOGI(TAG, "motor parado");
+}
+
+/* ============================
+   MOTOR DE PASSO (L298N)
+   ============================ */
+
+static const int step_sequence[4][4] = {
+    {1,0,1,0},
+    {0,1,1,0},
+    {0,1,0,1},
+    {1,0,0,1}
+};
+
+void stepper_init(void){
+    gpio_reset_pin(STEP_IN1);
+    gpio_reset_pin(STEP_IN2);
+    gpio_reset_pin(STEP_IN3);
+    gpio_reset_pin(STEP_IN4);
+
+    gpio_set_direction(STEP_IN1, GPIO_MODE_OUTPUT);
+    gpio_set_direction(STEP_IN2, GPIO_MODE_OUTPUT);
+    gpio_set_direction(STEP_IN3, GPIO_MODE_OUTPUT);
+    gpio_set_direction(STEP_IN4, GPIO_MODE_OUTPUT);
+}
+
+void stepper_step(int step){
+    gpio_set_level(STEP_IN1, step_sequence[step][0]);
+    gpio_set_level(STEP_IN2, step_sequence[step][1]);
+    gpio_set_level(STEP_IN3, step_sequence[step][2]);
+    gpio_set_level(STEP_IN4, step_sequence[step][3]);
+}
+
+void motor_forwardD(uint16_t speed){
+    int delay_ms = 10;
+    for(int i=0;i<4;i++){
+        stepper_step(i);
+        vTaskDelay(delay_ms / portTICK_PERIOD_MS);
+    }
+}
+
+void motor_backwardD(uint16_t speed){
+    int delay_ms = 10;
+    for(int i=3;i>=0;i--){
+        stepper_step(i);
+        vTaskDelay(delay_ms / portTICK_PERIOD_MS);
+    }
+}
+
+void motor_stopD(void){
+    gpio_set_level(STEP_IN1,0);
+    gpio_set_level(STEP_IN2,0);
+    gpio_set_level(STEP_IN3,0);
+    gpio_set_level(STEP_IN4,0);
 }
 
 
@@ -263,6 +322,8 @@ void tcp_server_task(void *pvParameters)
 			        motor_forwardVM(&motorB, speed);
  				else if (motor == 3)
 			        motor_forwardVM(&motorC, speed);
+				else if (motor == 4)
+			        motor_forwardD(speed);
 			
 			    send(client_sock, "frente\n", 10, 0);
 			}
@@ -274,6 +335,8 @@ void tcp_server_task(void *pvParameters)
 			        motor_backwardVM(&motorB, speed);
 			    else if (motor == 3)
 			        motor_backwardVM(&motorC, speed);
+				else if (motor == 4)
+			        motor_backwardD(speed);
 			
 			    send(client_sock, "re\n", 8, 0);
 			}
@@ -285,12 +348,17 @@ void tcp_server_task(void *pvParameters)
 			        motor_stopVM(&motorB);
 				else if (motor == 3)
 			        motor_stopVM(&motorC);
+				else if (motor == 4)
+			        motor_stopD();
+
 			    send(client_sock, "parado\n", 11, 0);
 			}else if (strcmp(direction, "stop_all") == 0)
 			{
 			    motor_stopVM(&motorA);
 			    motor_stopVM(&motorB);
 				motor_stopVM(&motorC);
+				motor_stopD();
+
 			    send(client_sock, "todos motores parados\n", 26, 0);
 			    ESP_LOGI(TAG, "todos os motores parados");
 			}
@@ -333,9 +401,9 @@ void app_main(void)
     motor_init(&motorB, "Motor B (OUT3/OUT4)");
     motor_init(&motorC, "Motor C (OUT1/OUT2)");
 
+    // inicializa motor de passo
+    stepper_init();
 
     // inicia o server TCP
     xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
 }
-
-
