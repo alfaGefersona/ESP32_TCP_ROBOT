@@ -37,7 +37,7 @@
 #define STEP_IN3 GPIO_NUM_19
 #define STEP_IN4 GPIO_NUM_21
 
-// passo base um pouco mais lento para reduzir vibração
+// passo base 
 static int stepper_speed_ms = 15;
 
 // LIMITES DE VELOCIDADE DO STEPPER
@@ -51,6 +51,28 @@ static int stepper_speed_ms = 15;
 // 200 / 8 = 25 passos por bolinha
 #define STEPS_PER_BOLINHA (STEPPER_STEPS_PER_REV / 8)
 #define STEPPER_START_DELAY_MS 1000
+
+/* ============================
+   MOTOR DE PASSO
+   ============================ */
+
+static const int step_sequence[4][4] = {
+    {1,0,1,0},
+    {0,1,1,0},
+    {0,1,0,1},
+    {1,0,0,1}
+};
+
+static TaskHandle_t stepperTaskHandle   = NULL;
+static TaskHandle_t bolinhaTaskHandle   = NULL;
+static TaskHandle_t intervaloTaskHandle = NULL;
+
+static int stepper_running   = 0;
+static int bolinha_running   = 0;
+static int intervalo_running = 0;
+
+static int bolinhas_por_segundo = 1;
+static int intervalo_ms_cfg     = 1000;
 
 
 typedef struct {
@@ -66,9 +88,7 @@ static Motor motorC = { .in1 = IN1_GPIO2, .in2 = IN2_GPIO2, .en = ENA_GPIO2, .pw
 
 static const char *TAG = "ESP32_TCP_MOTOR";
 
-/* ============================
-   HELPERS DE PARSING (SEM JSON LIB)
-   ============================ */
+
 
 static const char* skip_spaces(const char *p) {
     while (p != NULL && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) {
@@ -93,7 +113,6 @@ static int parse_int_field(const char *json, const char *field, int *out_value) 
         return 0;
     }
 
-    // aceita opcionalmente ':' já embutido no "field" ou não
     if (*p == ':') {
         p++;
         p = skip_spaces(p);
@@ -169,27 +188,6 @@ static void motor_stopVM(Motor *m) {
     ledc_update_duty(LEDC_LOW_SPEED_MODE, m->pwm_channel);
 }
 
-/* ============================
-   MOTOR DE PASSO
-   ============================ */
-
-static const int step_sequence[4][4] = {
-    {1,0,1,0},
-    {0,1,1,0},
-    {0,1,0,1},
-    {1,0,0,1}
-};
-
-static TaskHandle_t stepperTaskHandle   = NULL;
-static TaskHandle_t bolinhaTaskHandle   = NULL;
-static TaskHandle_t intervaloTaskHandle = NULL;
-
-static int stepper_running   = 0;
-static int bolinha_running   = 0;
-static int intervalo_running = 0;
-
-static int bolinhas_por_segundo = 1;
-static int intervalo_ms_cfg     = 1000;
 
 static void stepper_init(void) {
     gpio_set_direction(STEP_IN1, GPIO_MODE_OUTPUT);
@@ -491,9 +489,15 @@ static void tcp_server_task(void *pvParameters) {
 
                     else if (strcmp(direction, "forward") == 0) {
 
-                        if (motor == 1) motor_forwardVM(&motorA, speed);
-                        else if (motor == 2) motor_forwardVM(&motorB, speed);
-                        else if (motor == 3) motor_forwardVM(&motorC, speed);
+                        if (motor == 1) {
+							motor_forwardVM(&motorA, speed);
+						}
+                        else if (motor == 2) {
+							motor_forwardVM(&motorB, speed);
+						}
+                        else if (motor == 3) {
+							motor_forwardVM(&motorC, speed);
+						}
 
                         else if (motor == 4) {
                             vTaskDelay(pdMS_TO_TICKS(1500));
@@ -510,10 +514,18 @@ static void tcp_server_task(void *pvParameters) {
 
                     else if (strcmp(direction, "stop") == 0) {
 
-                        if (motor == 1) motor_stopVM(&motorA);
-                        else if (motor == 2) motor_stopVM(&motorB);
-                        else if (motor == 3) motor_stopVM(&motorC);
-                        else if (motor == 4) motor_stepper_stop();
+                        if (motor == 1){
+							motor_stopVM(&motorA);
+						}
+                        else if (motor == 2){
+							 motor_stopVM(&motorB);
+						}
+                        else if (motor == 3){
+							motor_stopVM(&motorC);
+						}
+                        else if (motor == 4) {
+							motor_stepper_stop();
+						}
                     }
 
                     command_len = 0;
