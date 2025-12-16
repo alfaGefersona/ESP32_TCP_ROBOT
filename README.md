@@ -1,250 +1,245 @@
-# 🧠 ESP32 — Controle de Múltiplos Motores DC via Wi-Fi (Access Point + Servidor TCP)
+# 🤖 ESP32 Firmware — Table Tennis Training Robot Controller
 
-Este projeto demonstra o controle de **três motores DC independentes** utilizando o **ESP32** configurado como **Access Point Wi-Fi** e **Servidor TCP**.  
-A comunicação é feita por meio de **mensagens JSON**, que determinam a direção e a velocidade de cada motor em tempo real.
+This repository contains the **embedded firmware for an ESP32-based table tennis training robot**.  
+The ESP32 operates as a **Wi-Fi Access Point** and **TCP server**, receiving JSON commands from a mobile application (Flutter) to control **multiple DC motors and a stepper motor** in real time.
 
----
-
-## 🎯 Objetivos
-
-- Criar um **Access Point Wi-Fi** com o ESP32;  
-- Implementar um **servidor TCP** para receber comandos JSON;  
-- Controlar **múltiplos motores DC via PWM (LEDC)**, com isolamento de canais;  
-- Permitir controle individual ou simultâneo de motores A, B e C.
+This firmware is a **core part of an integrated system**, alongside a Flutter mobile app used as the control interface.
 
 ---
 
-## 📂 Estrutura de Pastas
+## 📌 Overview
+
+The ESP32 firmware is responsible for:
+
+- Hosting a **Wi-Fi Access Point (AP)**
+- Running a **TCP server** for command reception
+- Parsing **JSON-based control messages**
+- Controlling:
+  - **3 DC motors** via PWM (LEDC)
+  - **1 stepper motor (NEMA17)** using an H-Bridge (L298N)
+- Executing motor control logic using **FreeRTOS tasks**
+
+---
+
+## 🧠 System Architecture
 
 ```
-esp32-tcp-motor/
-├── main/
-│   ├── main.c                # Código principal (Wi-Fi, TCP e controle dos motores)
-│   ├── CMakeLists.txt        # Configuração de build do módulo main
-│   └── component.mk          # (Opcional)
-│
-├── build/                    # Gerado automaticamente após compilação
-├── CMakeLists.txt            # Configuração global do projeto
-├── sdkconfig                 # Configuração do projeto (gerada após menuconfig)
-└── README.md                 # Este arquivo
+Flutter Mobile App
+        │
+        │  Wi-Fi (AP Mode)
+        │  TCP + JSON
+        ▼
+ESP32 (Access Point + TCP Server)
+        │
+        ├── DC Motor A (Launcher)
+        ├── DC Motor B (Launcher)
+        ├── DC Motor C (Launcher)
+        └── Stepper Motor (Ball Feeder / Disc)
 ```
 
----
-
-## 🔌 Hardware Utilizado
-
-| Componente | Função | Observação |
-|-------------|---------|------------|
-| ESP32 DevKit | Microcontrolador principal | Responsável pelo Wi-Fi e PWM |
-| Ponte H (L298N / L293D) | Interface de potência | Controla os motores DC |
-| Motores DC | Atuadores | Três motores independentes |
-| Fonte 5–12V | Alimentação | Energia dos motores e ESP32 |
-| Jumpers | Conexões elétricas | Ligações entre ESP32 e ponte H |
+- The **ESP32 acts as the server**
+- The **mobile app acts as the TCP client**
+- Commands are sent as **JSON strings terminated by \n**
 
 ---
 
-## ⚙️ Mapeamento de Pinos
+## 🧱 Hardware Components
 
-### Motor A — (OUT1 / OUT2)
-| Função | GPIO | Descrição |
-|--------|-------|------------|
-| IN1 | GPIO 33 | Direção A |
-| IN2 | GPIO 32 | Direção B |
-| ENA | GPIO 14 | PWM — Canal LEDC 1 |
-
-### Motor B — (OUT3 / OUT4)
-| Função | GPIO | Descrição |
-|--------|-------|------------|
-| IN3 | GPIO 26 | Direção A |
-| IN4 | GPIO 27 | Direção B |
-| ENB | GPIO 25 | PWM — Canal LEDC 0 |
-
-### Motor C — (OUT5 / OUT6)
-| Função | GPIO | Descrição |
-|--------|-------|------------|
-| IN1 | GPIO 16 | Direção A |
-| IN2 | GPIO 17 | Direção B |
-| ENA | GPIO 18 | PWM — Canal LEDC 2 |
+| Component | Description |
+|----------|-------------|
+| ESP32 DevKit | Main microcontroller |
+| L298N / L293D | H-Bridge motor driver |
+| DC Motors (x3) | Ball launching motors |
+| NEMA17 Stepper Motor | Ball feeding mechanism |
+| External Power Supply (5–12V) | Motors and ESP32 |
+| Jumpers & Wiring | Electrical connections |
 
 ---
 
-## ⚙️ Parâmetros Técnicos
+## ⚙️ Pin Mapping
 
-| Parâmetro | Valor |
-|------------|--------|
-| Frequência PWM | 5 kHz |
-| Resolução PWM | 8 bits (0–255) |
-| Modo | LEDC_LOW_SPEED_MODE |
+### DC Motors
+
+#### Motor A
+| Function | GPIO |
+|--------|------|
+| IN1 | GPIO 33 |
+| IN2 | GPIO 32 |
+| EN (PWM) | GPIO 14 |
+| PWM Channel | LEDC_CHANNEL_0 |
+
+#### Motor B
+| Function | GPIO |
+|--------|------|
+| IN1 | GPIO 26 |
+| IN2 | GPIO 27 |
+| EN (PWM) | GPIO 25 |
+| PWM Channel | LEDC_CHANNEL_1 |
+
+#### Motor C
+| Function | GPIO |
+|--------|------|
+| IN1 | GPIO 16 |
+| IN2 | GPIO 17 |
+| EN (PWM) | GPIO 18 |
+| PWM Channel | LEDC_CHANNEL_2 |
+
+---
+
+### Stepper Motor (Motor 4)
+
+| Function | GPIO |
+|--------|------|
+| IN1 | GPIO 4 |
+| IN2 | GPIO 5 |
+| IN3 | GPIO 19 |
+| IN4 | GPIO 21 |
+
+- Motor type: **NEMA17**
+- Steps per revolution: **200**
+- Disc cavities: **8**
+- Steps per ball: **25**
+
+---
+
+## ⚙️ PWM & Timing Parameters
+
+| Parameter | Value |
+|---------|------|
+| PWM Frequency | 5 kHz |
+| PWM Resolution | 8-bit (0–255) |
+| PWM Mode | LEDC Low Speed |
 | Timer | LEDC_TIMER_0 |
-| Canais | A: 1 / B: 0 / C: 2 |
-| Comunicação | TCP (JSON via Wi-Fi) |
+| Stepper Min Delay | 5 ms |
+| Stepper Max Delay | 40 ms |
 
 ---
 
-## 📡 Configuração Wi-Fi
+## 📡 Wi-Fi & Network Configuration
 
-O ESP32 atua como **Access Point**, criando sua própria rede sem fio.  
-Os parâmetros estão definidos no código principal (`main.c`).
+The ESP32 runs in **Access Point mode**.
 
-| Parâmetro | Valor |
-|------------|--------|
-| SSID | `Robot` |
-| Senha | `12345678` |
-| Canal | 1 |
-| Modo | Access Point |
-| IP padrão | `192.168.4.1` |
-| Porta TCP | `8080` |
-| Máx. conexões | 1 |
-
-Após iniciar o ESP32, conecte-se à rede **Robot** e envie comandos TCP diretamente.
+| Parameter | Value |
+|----------|------|
+| SSID | Robot |
+| Password | 12345678 |
+| IP Address | 192.168.4.1 |
+| TCP Port | 8080 |
+| Max Clients | 1 |
 
 ---
 
-## 🧩 Arquitetura do Sistema
+## 💬 Communication Protocol (JSON)
 
-### Inicialização (`app_main`)
-- Inicializa a NVS (memória não volátil);
-- Configura o **Access Point Wi-Fi** (`wifi_init_softap`);
-- Define o **timer PWM global** (`ledc_timer_config`);
-- Inicializa os motores A, B e C (`motor_init`);
-- Cria a tarefa **`tcp_server_task`** para gerenciar conexões.
+Commands are sent as JSON messages terminated with a newline (`\n`).
 
-### Servidor TCP (`tcp_server_task`)
-- Cria e escuta conexões TCP na porta `8080`;
-- Recebe mensagens JSON com os campos `"motor"`, `"direction"` e `"speed"`;
-- Decodifica e aplica o comando ao motor correspondente;
-- Retorna resposta textual ao cliente.
+### DC Motor Control
 
-### Controle dos Motores
-As funções utilizam GPIOs e PWM via driver **LEDC**:
-
-| Função | Descrição |
-|--------|------------|
-| `motor_forwardVM(&motorX, speed)` | Gira o motor para frente |
-| `motor_backwardVM(&motorX, speed)` | Gira o motor para trás |
-| `motor_stopVM(&motorX)` | Para o motor (PWM=0) |
-
----
-
-## 💬 Formato da Comunicação
-
-O cliente envia mensagens JSON via TCP.
-
-### Exemplo 1 — Motor A para frente
 ```json
 {"motor":1,"direction":"forward","speed":200}
+{"motor":2,"direction":"stop"}
+{"motor":3,"direction":"forward","speed":150}
 ```
 
-### Exemplo 2 — Motor B ré
+### Stepper Motor Control (Motor 4)
+
+**Continuous rotation**
 ```json
-{"motor":2,"direction":"backward","speed":150}
+{"motor":4,"direction":"forward","speed":180}
 ```
 
-### Exemplo 3 — Motor C parar
+**Balls per second**
 ```json
-{"motor":3,"direction":"stop","speed":0}
+{"motor":4,"direction":"forward","bolinhas":3}
 ```
 
-### Exemplo 4 — Parar todos
+**Fixed interval between balls**
+```json
+{"motor":4,"direction":"forward","intervalo_ms":800}
+```
+
+### Stop Everything
 ```json
 {"direction":"stop_all"}
 ```
 
-### Respostas do Servidor
-```
-frente
-re
-parado
-todos motores parados
-comando inválido
-```
+---
+
+## 🧩 Internal Architecture
+
+### FreeRTOS Tasks
+
+| Task | Responsibility |
+|-----|---------------|
+| tcp_server_task | TCP server and command parsing |
+| stepper_task | Continuous stepper rotation |
+| bolinha_task | Ball-per-second control |
+| bolinha_intervalo_task | Fixed-interval feeding |
+
+Only **one stepper mode runs at a time**, enforced via task control flags.
 
 ---
 
-## 🧪 Teste de Comunicação
+## 🧪 Testing the Firmware
 
-1. **Conecte-se à rede Wi-Fi:**
+1. Connect to Wi-Fi:
    ```
    SSID: Robot
-   Senha: 12345678
+   Password: 12345678
    ```
 
-2. **Abra um cliente TCP**, como `netcat`:
+2. Open TCP client:
    ```bash
    nc 192.168.4.1 8080
    ```
 
-3. **Envie o comando:**
+3. Send command:
    ```json
    {"motor":1,"direction":"forward","speed":180}
    ```
 
-4. **Receba a resposta:**
-   ```
-   frente
-   ```
-
-5. **Veja os logs no monitor serial:**
-   ```
-   I (1456) ESP32_TCP_MOTOR: motor: 1 | direcao: forward | velocidade: 180
-   I (1458) ESP32_TCP_MOTOR: motor frente (speed=180)
-   ```
-
----
-
-## 🔌 Diagrama de Ligação
-
-```
-ESP32         PONTE H (L298N)
-------        ----------------
-GPIO 33  ---> IN1
-GPIO 32  ---> IN2
-GPIO 14  ---> ENA (PWM Motor A)
-
-GPIO 26  ---> IN3
-GPIO 27  ---> IN4
-GPIO 25  ---> ENB (PWM Motor B)
-
-GPIO 16  ---> IN5
-GPIO 17  ---> IN6
-GPIO 18  ---> ENA (PWM Motor C)
-
-5V       ---> +5V
-GND      ---> GND
-```
-
----
-
-## 🧰 Solução de Problemas
-
-| Problema | Causa provável | Solução |
-|-----------|----------------|----------|
-| Motor A parou após adicionar Motor C | Conflito de canais/timers do LEDC | Use canais distintos ou timers separados |
-| Wi-Fi não aparece | Falha no modo AP | Reinicie o ESP32 |
-| Direção invertida | Pinos IN1/IN2 trocados | Inverta as conexões |
-| Cliente desconecta | JSON malformado | Corrija o formato da mensagem |
-| Duty não atua | PWM não atualizado | Confirme `ledc_update_duty()` após `set_duty()` |
-
----
-
-## ⚙️ Compilação e Upload
-
-1. Configure o alvo:
-   ```bash
-   idf.py set-target esp32
-   ```
-
-2. Compile:
-   ```bash
-   idf.py build
-   ```
-
-3. Faça upload:
-   ```bash
-   idf.py flash
-   ```
-
-4. Monitore:
+4. Monitor logs:
    ```bash
    idf.py monitor
    ```
+
+---
+
+## ⚙️ Build & Flash
+
+```bash
+idf.py set-target esp32
+idf.py build
+idf.py flash
+idf.py monitor
+```
+
+---
+
+## 🎓 Academic Context
+
+This firmware was developed as part of an **Integration Workshop** project, focusing on:
+
+- Embedded systems
+- Real-time motor control
+- TCP/IP networking
+- IoT system integration
+- Hardware–software co-design
+
+---
+
+## 📄 License
+
+This project is intended for **academic and educational use**.  
+For commercial use, please contact the authors.
+
+
+## 👥 Creators & Contributors
+
+This project was developed and maintained with contributions from:
+
+- @alfaGefersona
+
+- @Tarsa-Reis
+
+Thank you for your contributions and support in making this project possible! 🚀
