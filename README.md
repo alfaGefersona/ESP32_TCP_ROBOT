@@ -234,14 +234,15 @@ This project is intended for **academic and educational use**.
 For commercial use, please contact the authors.
 
 
-## 👥 Creators & Contributors
+## 👨‍💻 Authors
+
+Developed by students of the **Integration Workshop** course.
 
 This project was developed and maintained with contributions from:
 
-- @alfaGefersona
-
-- @Tarsa-Reis
-
-- alfamatheuso
+- **[@alfaGefersona](https://github.com/alfaGefersona)**
+- **[@Tarsa-Reis](https://github.com/Tarsa-Reis)**
+- **[@alfamatheuso](https://github.com/alfamatheuso)**
+- **[@AlexandreMC23](https://github.com/AlexandreMC23)**
 
 Thank you for your contributions and support in making this project possible! 🚀
