@@ -242,4 +242,6 @@ This project was developed and maintained with contributions from:
 
 - @Tarsa-Reis
 
+- alfamatheuso
+
 Thank you for your contributions and support in making this project possible! 🚀
